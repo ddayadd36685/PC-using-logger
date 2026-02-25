@@ -24,6 +24,8 @@ class BrowserBridgeServer:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._ready_event = threading.Event()
+        self._last_error: str | None = None
         self._host = "127.0.0.1"
         self._port = 49152
 
@@ -33,6 +35,8 @@ class BrowserBridgeServer:
         if self._thread and self._thread.is_alive():
             return None
         self._stop_event.clear()
+        self._ready_event.clear()
+        self._last_error = None
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         return None
@@ -43,14 +47,30 @@ class BrowserBridgeServer:
 
     def stop(self) -> None:
         self._stop_event.set()
+        self._ready_event.clear()
 
     def _run_loop(self) -> None:
-        asyncio.run(self._serve())
+        try:
+            asyncio.run(self._serve())
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._ready_event.clear()
 
     async def _serve(self) -> None:
-        async with websockets.serve(self._handler, self._host, self._port):
-            while not self._stop_event.is_set():
-                await asyncio.sleep(0.5)
+        try:
+            async with websockets.serve(self._handler, self._host, self._port):
+                self._ready_event.set()
+                while not self._stop_event.is_set():
+                    await asyncio.sleep(0.5)
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._ready_event.clear()
+
+    def wait_ready(self, timeout_sec: float = 1.5) -> bool:
+        return self._ready_event.wait(timeout=timeout_sec)
+
+    def get_start_error(self) -> str | None:
+        return self._last_error
 
     async def _handler(self, websocket) -> None:
         async for message in websocket:

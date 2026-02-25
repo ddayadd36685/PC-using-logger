@@ -3,7 +3,7 @@ import signal
 import sys
 
 from PySide6.QtGui import QFont, QIcon
-from PySide6.QtWidgets import QApplication, QToolTip
+from PySide6.QtWidgets import QApplication, QMessageBox, QToolTip
 
 from timetracker.config.config_manager import ConfigManager
 from timetracker.health.health_manager import HealthManager
@@ -58,6 +58,9 @@ def main() -> int:
     classifier = Classifier()
     bridge = BrowserBridgeServer()
     bridge.start()
+    if not bridge.wait_ready():
+        detail = bridge.get_start_error() or "无法绑定本地端口 127.0.0.1:49152"
+        QMessageBox.warning(None, "浏览器桥接启动失败", detail)
     tracker = Tracker(repo, config, classifier, bridge)
     floating_ball = FloatingBall()
     health_manager = HealthManager(config)
