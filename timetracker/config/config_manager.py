@@ -14,7 +14,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "health_whitelist": [],
     "blocked_apps": [],
     "privacy_mode": True,
-    "floating_ball_visible": True,
+    "floating_ball_visible": False,
     "store_raw_events": False,
     "autostart": False,
 }

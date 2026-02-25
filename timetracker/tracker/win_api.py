@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import ctypes
+from ctypes import wintypes
 from typing import Optional
 
 import win32api
@@ -60,3 +62,17 @@ def is_screen_locked() -> bool:
         return state != win32ts.WTSActive
     except Exception:
         return False
+
+
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+
+def get_idle_seconds() -> float:
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+        return 0.0
+    tick_count = ctypes.windll.kernel32.GetTickCount()
+    idle_ms = tick_count - info.dwTime
+    return max(0.0, idle_ms / 1000.0)

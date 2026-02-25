@@ -1,7 +1,9 @@
 import ctypes
 import signal
 import sys
+import time
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QToolTip
 
@@ -12,7 +14,9 @@ from timetracker.storage.repository import Repository
 from timetracker.tracker.browser_bridge import BrowserBridgeServer
 from timetracker.tracker.classifier import Classifier
 from timetracker.tracker.tracker import Tracker
+from timetracker.tracker import win_api
 from timetracker.ui.floating_ball import FloatingBall, FloatingBallState
+from timetracker.ui.idle_popup import IdlePopup
 from timetracker.ui.settings.app_list_page import AppListPage
 from timetracker.ui.settings.general_page import GeneralPage
 from timetracker.ui.settings.health_page import HealthPage
@@ -65,6 +69,7 @@ def main() -> int:
     floating_ball = FloatingBall()
     health_manager = HealthManager(config)
     overlay = RestOverlay(config)
+    idle_popup = IdlePopup()
     icon_path = resource_path("timetracker/assets/Health_Monitor_Icon.ico")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
@@ -139,11 +144,65 @@ def main() -> int:
         duration_sec = max(1, int(round(config.get_int("sample_interval_ms") / 1000)))
         health_manager.notify_working(result, duration_sec)
 
+    idle_auto_paused = False
+    idle_active_since: float | None = None
+    idle_timer = QTimer()
+    idle_timer.setInterval(1000)
+
+    def _set_auto_paused(paused: bool) -> None:
+        nonlocal idle_auto_paused
+        if paused == idle_auto_paused:
+            return
+        idle_auto_paused = paused
+        if paused:
+            tracker.pause()
+            health_manager.pause()
+            tray.set_tracking_paused(True)
+        else:
+            tracker.resume()
+            health_manager.resume()
+            tray.set_tracking_paused(False)
+
+    def handle_idle_tick() -> None:
+        nonlocal idle_active_since
+        if win_api.is_screen_locked():
+            idle_active_since = None
+            idle_popup.hide_popup()
+            _set_auto_paused(True)
+            return
+        idle_sec = win_api.get_idle_seconds()
+        if idle_sec >= 300:
+            idle_active_since = None
+            idle_popup.show_popup()
+            _set_auto_paused(True)
+            return
+        if idle_popup.isVisible():
+            if idle_sec <= 0.5:
+                if idle_active_since is None:
+                    idle_active_since = time.monotonic()
+                elif time.monotonic() - idle_active_since >= 2:
+                    idle_popup.hide_popup()
+                    idle_active_since = None
+                    _set_auto_paused(False)
+            else:
+                idle_active_since = None
+        elif idle_auto_paused:
+            if idle_sec <= 0.5:
+                if idle_active_since is None:
+                    idle_active_since = time.monotonic()
+                elif time.monotonic() - idle_active_since >= 2:
+                    idle_active_since = None
+                    _set_auto_paused(False)
+            else:
+                idle_active_since = None
+
     tracker.on_sample.connect(handle_sample)
     overlay.set_callbacks(health_manager.user_start_rest, health_manager.user_delay, health_manager.user_skip)
     health_manager.on_show_overlay.connect(overlay.show_overlay)
     health_manager.on_hide_overlay.connect(overlay.hide_overlay)
     health_manager.on_rest_tick.connect(overlay.update_countdown)
+    idle_timer.timeout.connect(handle_idle_tick)
+    idle_timer.start()
     tracker.start()
     exit_code = app.exec()
     tracker.stop()
