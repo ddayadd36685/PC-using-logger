@@ -1,0 +1,52 @@
+PC_use_log
+├── timetracker
+│   ├── analytics
+│   │   ├── __init__.py
+│   │   ├── base_metric.py
+│   │   ├── metric_registry.py
+│   │   ├── pie_metric.py
+│   │   └── trend_metric.py
+│   ├── assets
+│   │   ├── Health_Monitor_Icon.ico
+│   │   └── Health_Monitor_Icon.png
+│   ├── browser_extension
+│   │   ├── background.js
+│   │   └── manifest.json
+│   ├── config
+│   │   ├── __init__.py
+│   │   ├── config_manager.py
+│   │   └── site_aliases.py
+│   ├── storage
+│   │   ├── __init__.py
+│   │   ├── db.py
+│   │   ├── models.py
+│   │   └── repository.py
+│   ├── tracker
+│   │   ├── __init__.py
+│   │   ├── browser_bridge.py
+│   │   ├── classifier.py
+│   │   ├── tracker.py
+│   │   └── win_api.py
+│   ├── ui
+│   │   ├── settings
+│   │   │   ├── __init__.py
+│   │   │   ├── general_page.py
+│   │   │   ├── main_window.py
+│   │   │   ├── privacy_page.py
+│   │   │   └── stats_page.py
+│   │   ├── widgets
+│   │   │   ├── __init__.py
+│   │   │   └── charts.py
+│   │   ├── __init__.py
+│   │   ├── floating_ball.py
+│   │   ├── style.py
+│   │   └── tray.py
+│   ├── utils
+│   │   ├── __init__.py
+│   │   └── paths.py
+│   ├── __init__.py
+│   └── main.py
+├── PRD_enhanced.md
+├── project_tree.txt
+├── requirements.txt
+└── save_tree.py
