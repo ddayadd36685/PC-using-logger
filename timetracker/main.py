@@ -107,8 +107,11 @@ def main() -> int:
         app.quit()
 
     tray: TrayController | None = None
+    manual_paused = False
 
     def toggle_tracking(paused: bool) -> None:
+        nonlocal manual_paused
+        manual_paused = paused
         if paused:
             tracker.pause()
             health_manager.pause()
@@ -144,55 +147,53 @@ def main() -> int:
         duration_sec = max(1, int(round(config.get_int("sample_interval_ms") / 1000)))
         health_manager.notify_working(result, duration_sec)
 
-    idle_auto_paused = False
+    idle_active = False
     idle_active_since: float | None = None
     idle_timer = QTimer()
     idle_timer.setInterval(1000)
 
-    def _set_auto_paused(paused: bool) -> None:
-        nonlocal idle_auto_paused
-        if paused == idle_auto_paused:
+    def _set_idle(active: bool, show_popup: bool) -> None:
+        nonlocal idle_active
+        if active == idle_active and (not show_popup or idle_popup.isVisible()):
             return
-        idle_auto_paused = paused
-        if paused:
-            tracker.pause()
+        idle_active = active
+        tracker.set_idle(active)
+        if active:
             health_manager.pause()
-            tray.set_tracking_paused(True)
+            if show_popup:
+                idle_popup.show_popup()
         else:
-            tracker.resume()
-            health_manager.resume()
-            tray.set_tracking_paused(False)
+            idle_popup.hide_popup()
+            if not manual_paused:
+                health_manager.resume()
 
     def handle_idle_tick() -> None:
         nonlocal idle_active_since
         if win_api.is_screen_locked():
             idle_active_since = None
-            idle_popup.hide_popup()
-            _set_auto_paused(True)
+            _set_idle(True, False)
             return
         idle_sec = win_api.get_idle_seconds()
         if idle_sec >= 300:
             idle_active_since = None
-            idle_popup.show_popup()
-            _set_auto_paused(True)
+            _set_idle(True, True)
             return
         if idle_popup.isVisible():
             if idle_sec <= 0.5:
                 if idle_active_since is None:
                     idle_active_since = time.monotonic()
                 elif time.monotonic() - idle_active_since >= 2:
-                    idle_popup.hide_popup()
                     idle_active_since = None
-                    _set_auto_paused(False)
+                    _set_idle(False, False)
             else:
                 idle_active_since = None
-        elif idle_auto_paused:
+        elif idle_active:
             if idle_sec <= 0.5:
                 if idle_active_since is None:
                     idle_active_since = time.monotonic()
                 elif time.monotonic() - idle_active_since >= 2:
                     idle_active_since = None
-                    _set_auto_paused(False)
+                    _set_idle(False, False)
             else:
                 idle_active_since = None
 

@@ -3,12 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import cast
 
-from PySide6.QtCore import QDate, QTimer, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
+from PySide6.QtCore import QDate, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QDateEdit,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -26,6 +25,58 @@ from PySide6.QtWidgets import (
 from timetracker.config.config_manager import ConfigManager
 from timetracker.storage.repository import Repository
 from timetracker.ui.widgets.charts import PieChartWidget, PieEntry, TrendChartWidget
+from timetracker.ui.widgets.date_wheel import DateEditPopup
+from timetracker.ui.widgets.timeline import TimelineSegment, TimelineWidget
+
+
+class DateField(QWidget):
+    dateChanged = Signal(QDate)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._date = QDate.currentDate()
+        self._label = QLabel("")
+        self._label.setMinimumWidth(90)
+        self._label.setStyleSheet("color:#CFE4FF;")
+        self._button = QPushButton("✎")
+        self._button.setFixedWidth(28)
+        self._button.setFixedHeight(24)
+        self._button.setStyleSheet("font-size:12px; padding:0 4px; border: 1px solid #414868; border-radius: 4px; background: #24283b;")
+        self._button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._button.clicked.connect(self._show_popup)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._label)
+        layout.addWidget(self._button)
+        
+        self._popup: DateEditPopup | None = None
+        self._update_label()
+
+    def date(self) -> QDate:
+        return self._date
+
+    def setDate(self, date: QDate) -> None:
+        if self._date != date:
+            self._date = date
+            self._update_label()
+            self.dateChanged.emit(date)
+
+    def _update_label(self) -> None:
+        self._label.setText(f"{self._date.year()}/{self._date.month()}/{self._date.day()}")
+
+    def _show_popup(self) -> None:
+        if not self._popup:
+            self._popup = DateEditPopup(self)
+            self._popup.dateSelected.connect(self.setDate)
+        
+        self._popup.setDate(self._date)
+        # Position popup below the widget
+        pos = self.mapToGlobal(self.rect().bottomLeft())
+        # Adjust position slightly
+        pos.setY(pos.y() + 5)
+        self._popup.show_at(pos)
 
 
 class StatsPage(QWidget):
@@ -54,13 +105,15 @@ class StatsPage(QWidget):
         self._auto_refresh.timeout.connect(self._tick_refresh)
         self._auto_refresh.start()
 
-        self._date_start = QDateEdit()
-        self._date_start.setCalendarPopup(True)
-        self._date_end = QDateEdit()
-        self._date_end.setCalendarPopup(True)
+        self._date_start = DateField()
+        self._date_end = DateField()
         today = QDate.currentDate()
         self._date_end.setDate(today)
         self._date_start.setDate(today.addDays(-6))
+        self._timeline_date = DateField()
+        self._timeline_date.setDate(today)
+        self._timeline_today = QPushButton("今日")
+        self._timeline_today.clicked.connect(self._reset_timeline_today)
 
         self._category_box = QComboBox()
         self._category_box.addItem("应用", "app")
@@ -134,6 +187,27 @@ class StatsPage(QWidget):
         right_panel = _panel("趋势")
         cast(QVBoxLayout, right_panel.layout()).addWidget(self._trend_chart)
 
+        self._timeline = TimelineWidget()
+        timeline_panel = QFrame()
+        timeline_panel.setObjectName("HudPanel")
+        timeline_layout = QVBoxLayout()
+        header_row = QHBoxLayout()
+        header = QLabel("时间轴")
+        header.setObjectName("HudTitle")
+        header_row.addWidget(header)
+        header_row.addStretch(1)
+        self._timeline_info = QLabel("")
+        info_font = QFont("Microsoft YaHei", 12, QFont.Weight.DemiBold)
+        self._timeline_info.setFont(info_font)
+        header_row.addWidget(self._timeline_info, 1, Qt.AlignmentFlag.AlignCenter)
+        header_row.addStretch(1)
+        header_row.addWidget(self._timeline_today)
+        header_row.addWidget(self._timeline_date)
+        timeline_layout.addLayout(header_row)
+        timeline_layout.addSpacing(4)
+        timeline_layout.addWidget(self._timeline)
+        timeline_panel.setLayout(timeline_layout)
+
         table_panel = _panel("Top 列表")
         cast(QVBoxLayout, table_panel.layout()).addWidget(self._table)
 
@@ -144,14 +218,19 @@ class StatsPage(QWidget):
         grid = QGridLayout()
         grid.addLayout(kpi_row, 0, 0)
         grid.addLayout(toolbar, 1, 0)
-        grid.addLayout(charts_row, 2, 0)
-        grid.addWidget(table_panel, 3, 0)
-        grid.setRowStretch(2, 1)
+        grid.addWidget(timeline_panel, 2, 0)
+        grid.addLayout(charts_row, 3, 0)
+        grid.addWidget(table_panel, 4, 0)
+        grid.setColumnStretch(0, 1)
         grid.setRowStretch(3, 1)
+        grid.setRowStretch(4, 1)
         self.setLayout(grid)
 
         self._bind_refresh()
         self._refresh()
+
+    def _reset_timeline_today(self) -> None:
+        self._timeline_date.setDate(QDate.currentDate())
 
     def _bind_refresh(self) -> None:
         self._date_start.dateChanged.connect(self._schedule_refresh)
@@ -161,6 +240,8 @@ class StatsPage(QWidget):
         self._granularity_box.currentIndexChanged.connect(self._schedule_refresh)
         self._top_spin.valueChanged.connect(self._schedule_refresh)
         self._search_input.textChanged.connect(self._schedule_refresh)
+        self._timeline_date.dateChanged.connect(self._schedule_refresh)
+        self._timeline.selected_changed.connect(self._handle_timeline_selected)
 
     def refresh_now(self) -> None:
         self._refresh()
@@ -173,6 +254,7 @@ class StatsPage(QWidget):
             self._refresh()
 
     def _refresh(self) -> None:
+        self._timeline_today.setVisible(self._timeline_date.date() != QDate.currentDate())
         start_date = self._date_start.date()
         end_date = self._date_end.date()
         if end_date < start_date:
@@ -224,6 +306,13 @@ class StatsPage(QWidget):
             self._selected_key,
         )
         self._trend_chart.set_data(trend_labels, trend_series)
+        timeline_date = self._timeline_date.date()
+        timeline_segments, timeline_totals, timeline_names, timeline_colors = self._build_timeline(
+            timeline_date, category, search, app_type
+        )
+        self._timeline.set_data(timeline_segments)
+        self._timeline.set_selected_key(self._selected_key)
+        self._update_timeline_info(timeline_totals, timeline_names, timeline_colors)
         self._update_kpis(
             total_sec,
             entries,
@@ -235,6 +324,80 @@ class StatsPage(QWidget):
             app_type,
         )
         self._update_table(entries, total_sec)
+
+    def _build_timeline(
+        self,
+        target_date: QDate,
+        category: str,
+        search: str,
+        app_type: str,
+    ) -> tuple[list[TimelineSegment], dict[str, int], dict[str, str], dict[str, QColor]]:
+        date_str = target_date.toString("yyyy-MM-dd")
+        sessions = self._repo.get_sessions_by_date(date_str)
+        blocked = set(self._config.get_json("blocked_apps") or [])
+        day_start = datetime.fromisoformat(date_str)
+        day_start_ts = int(day_start.timestamp())
+        segments: list[TimelineSegment] = []
+        totals: dict[str, int] = {}
+        names: dict[str, str] = {}
+        colors: dict[str, QColor] = {}
+        for session in sessions:
+            if session.category_type != category:
+                continue
+            if category == "app" and session.category_key in blocked and session.category_key != "system.idle":
+                continue
+            name = session.category_name
+            if category == "app" and name.lower().endswith(".exe"):
+                name = name[:-4]
+            name_lower = name.lower()
+            key_lower = session.category_key.lower()
+            if session.category_key != "system.idle":
+                if search and search not in name_lower and search not in key_lower:
+                    continue
+                if app_type != "all":
+                    if self._infer_app_type(session.category_key, name) != app_type:
+                        continue
+            start_sec = max(0, session.started_at - day_start_ts)
+            end_sec = min(86400, session.ended_at - day_start_ts + 1)
+            if end_sec <= 0 or start_sec >= 86400 or end_sec <= start_sec:
+                continue
+            if session.category_key == "system.idle":
+                color = QColor("#3A4358")
+                label = "Idle"
+            else:
+                if session.category_key not in self._color_map:
+                    self._ensure_colors([session.category_key])
+                color = self._color_map.get(session.category_key, QColor("#00E5FF"))
+                label = name
+            colors[session.category_key] = color
+            segments.append(
+                TimelineSegment(
+                    start_sec=start_sec,
+                    end_sec=end_sec,
+                    key=session.category_key,
+                    label=label,
+                    color=color,
+                )
+            )
+            totals[session.category_key] = totals.get(session.category_key, 0) + session.duration_sec
+            names[session.category_key] = label
+        return segments, totals, names, colors
+
+    def _update_timeline_info(
+        self,
+        totals: dict[str, int],
+        names: dict[str, str],
+        colors: dict[str, QColor],
+    ) -> None:
+        if not self._selected_key:
+            self._timeline_info.setText("点击时间段查看详情")
+            self._timeline_info.setStyleSheet("color:#8EA6C2;")
+            return
+        name = names.get(self._selected_key, self._selected_key)
+        duration = totals.get(self._selected_key, 0)
+        self._timeline_info.setText(f"{name} · 当日 {format_duration(duration)}")
+        color = colors.get(self._selected_key, QColor("#8EA6C2"))
+        self._timeline_info.setStyleSheet(f"color:{color.name()};")
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -493,6 +656,16 @@ class StatsPage(QWidget):
             return
         self._selected_key = key if self._selected_key != key else None
         self._refresh()
+
+    def _handle_timeline_selected(self, key: str | None) -> None:
+        self._selected_key = key
+        self._refresh()
+
+    def showEvent(self, event) -> None:
+        self._timeline_date.setDate(QDate.currentDate())
+        self._selected_key = None
+        self._refresh()
+        super().showEvent(event)
 
 
 def _panel(title: str) -> QFrame:

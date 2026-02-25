@@ -82,6 +82,20 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS focus_sessions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT    NOT NULL,
+            category_type TEXT    NOT NULL,
+            category_key  TEXT    NOT NULL,
+            category_name TEXT    NOT NULL,
+            started_at    INTEGER NOT NULL,
+            ended_at      INTEGER NOT NULL,
+            duration_sec  INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS app_config (
             key   TEXT PRIMARY KEY,
             value TEXT
@@ -91,4 +105,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON focus_events(date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agg_date ON day_aggregates(date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_hour_agg_date ON hour_aggregates(date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_date ON focus_sessions(date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_key ON focus_sessions(date, category_key)")
     conn.commit()

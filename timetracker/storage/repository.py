@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from .db import Database
-from .models import DayAggregate, FocusSlice, HourAggregate
+from .models import DayAggregate, FocusSession, FocusSlice, HourAggregate
 
 
 class Repository:
@@ -286,6 +286,119 @@ class Repository:
         ).fetchone()
         return row["category_name"] if row else category_key
 
+    def insert_session(self, session: FocusSession) -> int:
+        conn = self._db.connect()
+        with conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO focus_sessions (
+                    date, category_type, category_key, category_name,
+                    started_at, ended_at, duration_sec
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session.date,
+                    session.category_type,
+                    session.category_key,
+                    session.category_name,
+                    session.started_at,
+                    session.ended_at,
+                    session.duration_sec,
+                ),
+            )
+        return int(cursor.lastrowid or 0)
+
+    def update_session_end(self, session_id: int, ended_at: int, duration_sec: int) -> None:
+        conn = self._db.connect()
+        with conn:
+            conn.execute(
+                """
+                UPDATE focus_sessions
+                SET ended_at = ?, duration_sec = ?
+                WHERE id = ?
+                """,
+                (ended_at, duration_sec, session_id),
+            )
+
+    def get_sessions_by_date(self, date_str: str) -> list[FocusSession]:
+        conn = self._db.connect()
+        rows = conn.execute(
+            """
+            SELECT id, date, category_type, category_key, category_name,
+                   started_at, ended_at, duration_sec
+            FROM focus_sessions
+            WHERE date = ?
+            ORDER BY started_at ASC
+            """,
+            (date_str,),
+        ).fetchall()
+        return [
+            FocusSession(
+                id=int(row["id"]),
+                date=row["date"],
+                category_type=row["category_type"],
+                category_key=row["category_key"],
+                category_name=row["category_name"],
+                started_at=int(row["started_at"]),
+                ended_at=int(row["ended_at"]),
+                duration_sec=int(row["duration_sec"]),
+            )
+            for row in rows
+        ]
+
+    def get_sessions_by_app(self, date_str: str, category_key: str) -> list[FocusSession]:
+        conn = self._db.connect()
+        rows = conn.execute(
+            """
+            SELECT id, date, category_type, category_key, category_name,
+                   started_at, ended_at, duration_sec
+            FROM focus_sessions
+            WHERE date = ? AND category_key = ?
+            ORDER BY started_at ASC
+            """,
+            (date_str, category_key),
+        ).fetchall()
+        return [
+            FocusSession(
+                id=int(row["id"]),
+                date=row["date"],
+                category_type=row["category_type"],
+                category_key=row["category_key"],
+                category_name=row["category_name"],
+                started_at=int(row["started_at"]),
+                ended_at=int(row["ended_at"]),
+                duration_sec=int(row["duration_sec"]),
+            )
+            for row in rows
+        ]
+
+    def get_sessions_in_range(self, start_ts: int, end_ts: int) -> list[FocusSession]:
+        conn = self._db.connect()
+        rows = conn.execute(
+            """
+            SELECT id, date, category_type, category_key, category_name,
+                   started_at, ended_at, duration_sec
+            FROM focus_sessions
+            WHERE started_at <= ? AND ended_at >= ?
+            ORDER BY started_at ASC
+            """,
+            (end_ts, start_ts),
+        ).fetchall()
+        return [
+            FocusSession(
+                id=int(row["id"]),
+                date=row["date"],
+                category_type=row["category_type"],
+                category_key=row["category_key"],
+                category_name=row["category_name"],
+                started_at=int(row["started_at"]),
+                ended_at=int(row["ended_at"]),
+                duration_sec=int(row["duration_sec"]),
+            )
+            for row in rows
+        ]
+
     def get_focus_events_range(
         self,
         start_ts: int,
@@ -353,6 +466,7 @@ class Repository:
             conn.execute("DELETE FROM focus_events WHERE category_key = ?", (category_key,))
             conn.execute("DELETE FROM hour_aggregates WHERE category_key = ?", (category_key,))
             conn.execute("DELETE FROM day_aggregates WHERE category_key = ?", (category_key,))
+            conn.execute("DELETE FROM focus_sessions WHERE category_key = ?", (category_key,))
 
     def clear_data(self) -> None:
         conn = self._db.connect()
@@ -360,3 +474,4 @@ class Repository:
             conn.execute("DELETE FROM focus_events")
             conn.execute("DELETE FROM hour_aggregates")
             conn.execute("DELETE FROM day_aggregates")
+            conn.execute("DELETE FROM focus_sessions")

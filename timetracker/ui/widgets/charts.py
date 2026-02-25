@@ -47,13 +47,13 @@ class PieChartWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = QRectF(self.rect()).adjusted(16, 16, -16, -16)
         header_height = 24.0
-        header_rect = QRectF(rect.left(), rect.top(), rect.width(), header_height)
         chart_rect = QRectF(
             rect.left(),
             rect.top() + header_height + 6,
             rect.width() * 0.55,
             rect.height() - header_height - 6,
         )
+        header_rect = QRectF(chart_rect.left(), rect.top(), chart_rect.width(), header_height)
         size = min(chart_rect.width(), chart_rect.height())
         center = chart_rect.center()
         outer_r = size * 0.42
@@ -128,19 +128,26 @@ class PieChartWidget(QWidget):
 
     def _draw_legend(self, painter: QPainter, rect: QRectF, total: int) -> None:
         start_x = rect.left() + rect.width() * 0.6
-        y = rect.top() + 10
-        painter.setFont(QFont("Microsoft YaHei", 9))
+        y = rect.top() + 8
+        font = QFont("Microsoft YaHei", 9)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        line_h = metrics.height() + 6
         for idx, entry in enumerate(self._entries):
             label = entry["label"]
             value = entry["value"]
             color = entry["color"]
             painter.setPen(QPen(color, 8))
-            painter.drawPoint(QPointF(start_x, y + 6))
+            painter.drawPoint(QPointF(start_x, y + line_h / 2))
             painter.setPen(QColor("#D6E2F1"))
             percent = f"{value * 100 / total:.1f}%" if total else "0%"
             duration = format_duration(value)
-            painter.drawText(QPointF(start_x + 12, y + 10), f"{label}  {percent}  {duration}")
-            y += 20
+            painter.drawText(
+                QRectF(start_x + 12, y, rect.right() - start_x - 16, line_h),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                f"{label}  {percent}  {duration}",
+            )
+            y += line_h
 
     def _draw_center_text(self, painter: QPainter, rect: QRectF, total: int) -> None:
         selected = next((item for item in self._entries if item["key"] == self._selected_key), None)

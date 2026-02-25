@@ -20,7 +20,7 @@ class IdlePopup(QWidget):
         title_font.setWeight(QFont.Weight.DemiBold)
         title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint = QLabel("检测到 5 分钟无输入，已暂停计时")
+        hint = QLabel("检测到 5 分钟无输入，已记录为 Idle")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet("color:#8EA6C2;")
         layout = QVBoxLayout(self)

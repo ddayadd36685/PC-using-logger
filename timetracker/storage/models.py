@@ -35,3 +35,15 @@ class HourAggregate:
     category_key: str
     category_name: str
     duration_sec: int
+
+
+@dataclass(frozen=True)
+class FocusSession:
+    id: int | None
+    date: str
+    category_type: str
+    category_key: str
+    category_name: str
+    started_at: int
+    ended_at: int
+    duration_sec: int
