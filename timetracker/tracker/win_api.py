@@ -22,23 +22,29 @@ class WindowInfo:
     pid: int = 0
 
 
-def _get_pid_and_path(hwnd: int) -> tuple[int, str]:
-    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+def _get_process_path_by_pid(pid: int) -> str:
     if not pid:
-        return 0, ""
+        return ""
     try:
         process = win32api.OpenProcess(
             win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid
         )
     except Exception:
-        return pid, ""
+        return ""
     try:
-        path = win32process.GetModuleFileNameEx(process, 0)
-        return pid, path
+        return win32process.GetModuleFileNameEx(process, 0)
     except Exception:
-        return pid, ""
+        return ""
     finally:
         win32api.CloseHandle(process)
+
+
+def _get_pid_and_path(hwnd: int) -> tuple[int, str]:
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    if not pid:
+        return 0, ""
+    path = _get_process_path_by_pid(pid)
+    return pid, path
 
 
 def get_foreground_window() -> Optional[WindowInfo]:
@@ -175,11 +181,12 @@ class IAudioSessionManager2(IUnknown):
         COMMETHOD([], HRESULT, "UnregisterDuckNotification", (["in"], POINTER(IUnknown), "NewNotifications")),
     ]
 
-def is_audio_playing(pid: int | None = None) -> bool:
+def is_audio_playing(pid: int | None = None, process_name: str | None = None) -> bool:
     """
     Check if audio is playing.
     If pid is provided, checks if the specific process is playing audio.
-    If pid is None, checks if any audio is playing on the default device.
+    If process_name is provided (without .exe), checks if any process with that name is playing audio.
+    If neither is provided, checks if any audio is playing on the default device.
     """
     try:
         enumerator = com_client.CreateObject(
@@ -188,24 +195,38 @@ def is_audio_playing(pid: int | None = None) -> bool:
         )
         endpoint = enumerator.GetDefaultAudioEndpoint(0, 0)
         
-        # If no PID specified, check global peak value
-        if pid is None:
-            interface_ptr = endpoint.Activate(IID_IAudioMeterInformation, 1, None)
+        # If no PID/Name specified, check global peak value
+        if pid is None and process_name is None:
+            interface_ptr = endpoint.Activate(ctypes.byref(IID_IAudioMeterInformation), 1, None)
             meter = interface_ptr.QueryInterface(IAudioMeterInformation)
             val = meter.GetPeakValue()
             return val > 1e-4
 
-        # If PID specified, check session specific peak value
-        session_manager = endpoint.Activate(IID_IAudioSessionManager2, 1, None).QueryInterface(IAudioSessionManager2)
+        # If PID or Name specified, check session specific peak value
+        session_manager = endpoint.Activate(ctypes.byref(IID_IAudioSessionManager2), 1, None).QueryInterface(IAudioSessionManager2)
         session_enumerator = session_manager.GetSessionEnumerator()
         count = session_enumerator.GetCount()
+
+        target_name = process_name.lower() if process_name else None
 
         for i in range(count):
             session_control = session_enumerator.GetSession(i)
             try:
                 session_control2 = session_control.QueryInterface(IAudioSessionControl2)
                 session_pid = session_control2.GetProcessId()
-                if session_pid == pid:
+                
+                match = False
+                if pid is not None and session_pid == pid:
+                    match = True
+                elif target_name is not None:
+                    # Resolve process name from PID
+                    path = _get_process_path_by_pid(session_pid)
+                    if path:
+                        name = path.split("\\")[-1].lower()
+                        if name == target_name or name == f"{target_name}.exe":
+                            match = True
+                
+                if match:
                     meter = session_control.QueryInterface(IAudioMeterInformation)
                     val = meter.GetPeakValue()
                     if val > 1e-4:

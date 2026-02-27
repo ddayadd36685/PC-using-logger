@@ -15,6 +15,7 @@ class TrayController:
         on_toggle_tracking: Callable[[bool], None],
         on_toggle_ball: Callable[[bool], None],
         on_quit: Callable[[], None],
+        ball_visible: bool = True,
     ) -> None:
         self._tray = QSystemTrayIcon()
         self._tray.setIcon(self._build_icon())
@@ -32,7 +33,7 @@ class TrayController:
 
         self._action_ball = QAction("显示悬浮球")
         self._action_ball.setCheckable(True)
-        self._action_ball.setChecked(True)
+        self._action_ball.setChecked(ball_visible)
         self._action_ball.toggled.connect(lambda checked: on_toggle_ball(checked))
 
         self._action_quit = QAction("退出")

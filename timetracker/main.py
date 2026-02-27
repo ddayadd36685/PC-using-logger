@@ -130,9 +130,10 @@ def main() -> int:
 
     floating_ball.set_callbacks(open_settings, open_health_overlay, lambda: toggle_ball(False), quit_app)
 
-    tray = TrayController(open_settings, open_health_overlay, toggle_tracking, toggle_ball, quit_app)
+    ball_visible = config.get_bool("floating_ball_visible")
+    tray = TrayController(open_settings, open_health_overlay, toggle_tracking, toggle_ball, quit_app, ball_visible)
     tray.show()
-    apply_ball_visibility(config.get_bool("floating_ball_visible"))
+    apply_ball_visibility(ball_visible)
     apply_health_enabled(config.get_bool("health_enabled"))
 
     def handle_sigint(*_args: object) -> None:
@@ -164,7 +165,7 @@ def main() -> int:
                 idle_popup.show_popup()
         else:
             idle_popup.hide_popup()
-            if not manual_paused:
+            if not manual_paused and config.get_bool("health_enabled"):
                 health_manager.resume()
 
     def handle_idle_tick() -> None:
@@ -182,7 +183,7 @@ def main() -> int:
         if idle_sec >= 290 or idle_active:
             window = win_api.get_foreground_window()
             # If we have a foreground window, check if it's playing audio
-            if window and win_api.is_audio_playing(window.pid):
+            if window and win_api.is_audio_playing(pid=window.pid, process_name=window.process_name):
                 idle_sec = 0.0
             
         if idle_sec >= 300:

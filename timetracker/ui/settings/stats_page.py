@@ -666,6 +666,8 @@ class StatsPage(QWidget):
         self._selected_key = None
         self._refresh()
         super().showEvent(event)
+        # Workaround for layout update issues on some systems
+        QTimer.singleShot(0, self.updateGeometry)
 
 
 def _panel(title: str) -> QFrame:
