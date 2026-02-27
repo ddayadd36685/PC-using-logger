@@ -173,7 +173,18 @@ def main() -> int:
             idle_active_since = None
             _set_idle(True, False)
             return
+        
         idle_sec = win_api.get_idle_seconds()
+        
+        # Check audio if we are close to idle threshold or already idle
+        # If audio is playing, consider user as active
+        # Only check audio if user has been idle for a while to save resources
+        if idle_sec >= 290 or idle_active:
+            window = win_api.get_foreground_window()
+            # If we have a foreground window, check if it's playing audio
+            if window and win_api.is_audio_playing(window.pid):
+                idle_sec = 0.0
+            
         if idle_sec >= 300:
             idle_active_since = None
             _set_idle(True, True)
